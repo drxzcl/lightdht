@@ -106,6 +106,9 @@ class KRPCTimeout(RuntimeError):
     """
     pass
 
+class KRPCError(RuntimeError):
+    pass
+
 
 class KRPCServer(object):
 
@@ -167,18 +170,16 @@ class KRPCServer(object):
                     with self._transactions_lock:
                         if t in self._transactions:
                             self._transactions.remove(t)
-                        self._results[t] = rec["r"]
+                        self._results[t] = rec
                 elif rec["y"] == "q":
                     # It's a request, send it to the handler.
                     self.handler(rec,c)
                 elif rec["y"] == "e":
-                    # We should have a way to propagate
-                    # exceptions to the client thread so
-                    # the application can react to KPRC errors.
-                    # However, to this day I have not seen a single
-                    # error. Usually nodes just ignore you if you do
-                    # something wrong.
-                    raise RuntimeError,"KRPC Error %r from %r" % (rec,c)
+                    # just post the error to the results array
+                    with self._transactions_lock:
+                        if t in self._transactions:
+                            self._transactions.remove(t)
+                        self._results[t] = rec
                 else:
                     raise RuntimeError,"Unknown KRPC message %r from %r" % (rec,c)
                     
@@ -234,10 +235,16 @@ class KRPCServer(object):
             dt+=0.1
             if dt > 5.0:                
                 raise KRPCTimeout
-                
+                        
+        # Retrieve the result
         r = self._results[t]
         del self._results[t]
-        return r
+        
+        if r["y"]=="e":
+            # Error condition!
+            raise KRPCError, "Error %r while processing transaction %r" % (r,q)
+         
+        return r["r"]
         
             
     def ping(self,c):
