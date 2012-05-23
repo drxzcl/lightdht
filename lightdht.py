@@ -44,9 +44,11 @@ import time
 import hashlib
 import struct
 import threading 
+import traceback
 import logging
 
 from bencode import bencode, bdecode
+from BTL import BTFailure
 
 # Logging is disabled by default.
 # See http://docs.python.org/library/logging.html
@@ -158,6 +160,7 @@ class KRPCServer(object):
         while True:
             if self._shutdown_flag:
                 break
+            rec = {}
             try:        
                 rec,c = self._sock.recvfrom(4096)
                 rec = bdecode(rec)
@@ -176,6 +179,7 @@ class KRPCServer(object):
                     self.handler(rec,c)
                 elif rec["y"] == "e":
                     # just post the error to the results array
+                    t = rec["t"]
                     with self._transactions_lock:
                         if t in self._transactions:
                             self._transactions.remove(t)
@@ -186,11 +190,13 @@ class KRPCServer(object):
             except socket.timeout:
                 # no packets, that's ok
                 pass
+            except BTFailure:
+                # bdecode error, ignore the packet
+                pass
             except:
-                # Log and re-raise
-                import traceback
+                # Log and carry on to keep the packet pump alive.
                 logger.critical("Exception while handling KRPC requests:\n\n"+traceback.format_exc()+("\n\n%r from %r" % (rec,c)))
-                raise
+                
 
     def send_krpc(self, req ,connect_info):
         """
@@ -206,7 +212,6 @@ class KRPCServer(object):
             req["t"] = t
         else:
             t = req["t"]
-        #print d
         data = bencode(req)
         self._transactions.add(t)
         self._sock.sendto(data, connect_info)
@@ -388,13 +393,19 @@ class DHT(object):
                         for node_id,node_c in decode_nodes(r["nodes"]):
                             if node_c not in self._bad:
                                 with self._nodes_lock:
-                                    self._nodes[node_id] = node_c                    
+                                    self._nodes[node_id] = node_c
                 except KRPCTimeout:
                     # The node did not reply.
                     # Blacklist it.
                     with self._nodes_lock:
-                        self._bad.add(c)                    
-                        del self._nodes[id_]    
+                        self._bad.add(c)
+                        del self._nodes[id_]
+                except KRPCError:
+                    # Sometimes we just flake out due to UDP being unreliable
+                    # Don't sweat it, just log and carry on.
+                    logger.error("KRPC Error:\n\n"+traceback.format_exc())
+                    
+                    
         if result_key:
             # We were expecting a result, but we did not find it!
             # Raise the NotFoundError exception instead of returning None
