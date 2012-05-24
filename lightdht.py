@@ -178,12 +178,19 @@ class KRPCServer(object):
                     # It's a request, send it to the handler.
                     self.handler(rec,c)
                 elif rec["y"] == "e":
-                    # just post the error to the results array
-                    t = rec["t"]
-                    with self._transactions_lock:
-                        if t in self._transactions:
-                            self._transactions.remove(t)
-                        self._results[t] = rec
+                    # just post the error to the results array,  but only if
+                    # we have a transaction ID!
+                    # Some software (e.g. LibTorrent) does not post the "t"
+                    if "t" in rec:
+                        t = rec["t"]
+                        with self._transactions_lock:
+                            if t in self._transactions:
+                                self._transactions.remove(t)
+                            self._results[t] = rec
+                    else:
+                        # log it
+                        logger.warning("Node %r reported error %r, but did "
+                                        "not specify a 't'" % (c,rec))
                 else:
                     raise RuntimeError,"Unknown KRPC message %r from %r" % (rec,c)
                     
