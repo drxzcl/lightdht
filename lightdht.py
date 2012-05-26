@@ -465,9 +465,9 @@ class DHT(object):
         with self._nodes_lock:
             self._nodes[rec["a"]["id"]] = c
         # Skeleton response
-        resp = {"y":"r","t":rec["t"],"r":{}}
+        resp = {"y":"r","t":rec["t"],"r":{"id":self._id}}
         if rec["q"] == "ping":
-            resp["r"]["id"] = self._id
+            #resp["r"]["id"] = self._id
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "find_node":
             target = rec["a"]["target"]
