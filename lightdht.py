@@ -344,14 +344,20 @@ class DHT(object):
         target = self._id
         
         iteration = 0
-        while True:        
-            self.find_node(target)
-            logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
-            time.sleep(10)
-            iteration += 1
-            target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
-            if iteration % 10 == 0:
-                target = self._id        
+        while True:
+            try:
+                self.find_node(target)
+                logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
+                time.sleep(10)
+                iteration += 1
+                target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
+                if iteration % 10 == 0:
+                    target = self._id
+            except:
+                # This loop should run forever. If we get into trouble, log
+                # the exception and carry on.
+                logger.critical("Exception in DHT maintenance thread:\n\n"+traceback.format_exc())
+
 
     def get_close_nodes(self,target, N=3): 
         """
@@ -464,9 +470,14 @@ class DHT(object):
 
 if __name__ == "__main__":            
 
-    # Enable logging. Switch to level INFO if things are too noisy for you.
-    logger.addHandler(logging.StreamHandler())
-    logger.setLevel(logging.DEBUG)
+    # Enable logging:
+    # Tell the module's logger to log at level DEBUG
+    logger.setLevel(logging.DEBUG)     
+    # Create a handler, tell it to log at level INFO on stdout
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    # Add the handler
+    logger.addHandler(handler)
 
     # Create a DHT node.
     dht1 = DHT(port=54767, id_=hashlib.sha1(
