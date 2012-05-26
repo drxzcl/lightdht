@@ -295,6 +295,13 @@ class DHT(object):
         self._shutdown_flag = False
         self._thread = None   
 
+        # Behaviour configuration
+        #   Am I actively seeking out other nodes?
+        self.active_discovery = True
+        #   After how many seconds should i do another self-lookup?
+        self.self_find_delay = 180.0 
+        #   How many active node discovery attempts between self-lookups?
+        self.active_discoveries = 10
         
 
     def start(self):
@@ -343,16 +350,20 @@ class DHT(object):
         logger.info("Establishing connections to DHT")
         target = self._id
         
+        delay = self.self_find_delay
+        if self.active_discovery:
+            delay /= (self.active_discoveries + 1)
+        
         iteration = 0
         while True:
             try:
                 self.find_node(target)
                 logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
-                time.sleep(10)
+                time.sleep(delay)
                 iteration += 1
-                target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
-                if iteration % 10 == 0:
-                    target = self._id
+                target = self._id
+                if self.active_discovery and iteration % (self.active_discoveries + 1) != 0:
+                    target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
             except:
                 # This loop should run forever. If we get into trouble, log
                 # the exception and carry on.
