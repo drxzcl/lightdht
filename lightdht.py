@@ -294,6 +294,10 @@ class DHT(object):
         # Thread details
         self._shutdown_flag = False
         self._thread = None   
+        
+        # default handler
+        self.handler = self.default_handler
+        
 
         # Behaviour configuration
         #   Am I actively seeking out other nodes?
@@ -309,7 +313,7 @@ class DHT(object):
             Start the DHT node
         """
         self._server.start()
-        self._server.handler = self._handler
+        self._server.handler = self.handler
 
         # Add the default nodes
         DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
@@ -452,7 +456,7 @@ class DHT(object):
         logger.info("Finding peers for %r" % info_hash.encode("hex"))
         return self._recurse(info_hash,self._server.get_peers, result_key="values",max_attempts=attempts)        
 
-    def _handler(self,rec,c):
+    def default_handler(self,rec,c):
         """
             Process incoming requests
         """
