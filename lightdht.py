@@ -44,6 +44,7 @@ import os
 import time
 import hashlib
 import hmac
+import random
 import struct
 import threading 
 import traceback
@@ -368,26 +369,54 @@ class DHT(object):
         """
         # Try to establish links to close nodes
         logger.info("Establishing connections to DHT")
-        target = self._id
-        
+        self.find_node(self._id)
+               
         delay = self.self_find_delay
+
         if self.active_discovery:
             delay /= (self.active_discoveries + 1)
         
         iteration = 0
         while True:
             try:
-                self.find_node(target)
-                logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
                 time.sleep(delay)
                 iteration += 1
-                target = self._id
                 if self.active_discovery and iteration % (self.active_discoveries + 1) != 0:
                     target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
+                    self._find_node(target)                
+                    logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
+                else:
+                    # Regular maintenance:
+                    #  Find N random nodes. Execute a find_node() on them.
+                    #  toss them if they come up empty.
+                    #print self._nodes.items()
+                    n = random.sample(self._nodes.items(),10)
+                    for node_id, c in n:
+                        print node_id.encode("hex"), c
+                        try:
+                            r = self._server.find_node(c, self._id)
+                            if "nodes" in r:
+                                self._process_incoming_nodes(r["nodes"])
+                        except KRPCTimeout:
+                            # The node did not reply.
+                            # Blacklist it.
+                            with self._nodes_lock:
+                                self._bad.add(c)
+                                if node_id in self._nodes:
+                                    del self._nodes[node_id]
+                    logger.info("Cleanup, routing table contains %d nodes", len(self._nodes))
             except:
                 # This loop should run forever. If we get into trouble, log
                 # the exception and carry on.
                 logger.critical("Exception in DHT maintenance thread:\n\n"+traceback.format_exc())
+
+    def _process_incoming_nodes(self,bnodes):
+        
+        # Add them to the routing table        
+        for node_id,node_c in decode_nodes(bnodes):
+            if node_c not in self._bad:
+                with self._nodes_lock:
+                    self._nodes[node_id] = node_c
 
 
     def get_close_nodes(self,target, N=3): 
@@ -432,12 +461,7 @@ class DHT(object):
                     if result_key and result_key in r:
                         return r[result_key]
                     if "nodes" in r:
-                        # we have nodes that could be closer.
-                        # Add them to the routing table and go again!
-                        for node_id,node_c in decode_nodes(r["nodes"]):
-                            if node_c not in self._bad:
-                                with self._nodes_lock:
-                                    self._nodes[node_id] = node_c
+                        self._process_incoming_nodes(r["nodes"])
                 except KRPCTimeout:
                     # The node did not reply.
                     # Blacklist it.
