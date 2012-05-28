@@ -22,11 +22,11 @@ lightdht.logger.addHandler(stdout_handler)
 
 
 # Create a DHT node.
-dht = lightdht.DHT(port=54767, id_=hashlib.sha1(
-        "Change this to avoid getting ID clashes").digest()) 
+id_ = hashlib.sha1("Change this to avoid getting ID clashes").digest()
+dht = lightdht.DHT(port=54767, id_=id_) 
 
 # where to put our product
-outf = open("get-peers.log","a")
+outf = open("get-peers.%s.log" % id_.encode("hex"),"a")
 
 # handler
 def myhandler(rec, c):
@@ -46,6 +46,8 @@ def myhandler(rec, c):
         dht.default_handler(rec,c) 
 
 dht.handler = myhandler
+dht.active_discovery = False
+dht.self_find_delay = 20
 
 # Start it!
 with dht:
