@@ -40,8 +40,10 @@ an easy to use data structure.
 
 import socket
 import sys
+import os
 import time
 import hashlib
+import hmac
 import struct
 import threading 
 import traceback
@@ -270,6 +272,17 @@ class KRPCServer(object):
     def get_peers(self, connect_info, info_hash):
         q = { "y":"q", "q":"get_peers", "a":{"id":self._id,"info_hash":info_hash}}
         return self._synctrans(q, connect_info)
+
+    def announce_peer(self, connect_info, info_hash, port, token):
+        # We ignore "name" and "seed" for now as they are not part of BEP0005
+        q = {'a': {
+                #'name': '', 
+                'info_hash': info_hash, 
+                'id': self._id, 
+                'token': token, 
+                'port': port}, 
+            'q': 'announce_peer', 'y': 'q'}
+        return self._synctrans(q, connect_info)
         
 
 class NotFoundError(RuntimeError):
@@ -306,6 +319,9 @@ class DHT(object):
         self.self_find_delay = 180.0 
         #   How many active node discovery attempts between self-lookups?
         self.active_discoveries = 10
+        
+        # Session key
+        self._key = os.urandom(20) # 20 random bytes == 160 bits
         
 
     def start(self):
@@ -467,19 +483,36 @@ class DHT(object):
         # Skeleton response
         resp = {"y":"r","t":rec["t"],"r":{"id":self._id}}
         if rec["q"] == "ping":
-            #resp["r"]["id"] = self._id
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "find_node":
             target = rec["a"]["target"]
             resp["r"]["nodes"] = encode_nodes(self.get_close_nodes(target))
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "get_peers":
-            # We don't keep any peer administration, just return
-            # other (closer?) nodes.
-            # we don't supply a token, which should prevent announces.
+            # Provide a token so we can receive announces
+            # The token is generated using HMAC and a secret 
+            # session key, so we don't have to remember it.
+            # Token is based on nodes id, connection details
+            # torrent infohash to avoid clashes in NAT scenarios.
             info_hash = rec["a"]["info_hash"]
+            peer_id = rec["a"]["id"]
+            token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
+            resp["r"]["token"] = token
+            # We dont actually keep any peer administration, so we
+            # always send back the closest nodes
             resp["r"]["nodes"] = encode_nodes(self.get_close_nodes(info_hash))
             self._server.send_krpc_reply(resp,c)
+        elif rec["q"] == "announce_peer":
+            # First things first, validate the token.
+            info_hash = rec["a"]["info_hash"]
+            peer_id = rec["a"]["id"]
+            token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
+            if token != rec["a"]["token"]:
+                return # Ignore the request
+            else:
+                # We dont actually keep any peer administration, so we
+                # just acknowledge.
+                self._server.send_krpc_reply(resp,c)
         else:
             raise RuntimeError,"Unknown request in query %r" % rec
 
