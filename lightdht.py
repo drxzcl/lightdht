@@ -390,7 +390,7 @@ class DHT(object):
                     #  Find N random nodes. Execute a find_node() on them.
                     #  toss them if they come up empty.
                     #print self._nodes.items()
-                    n = random.sample(self._nodes.items(),10)
+                    n = random.sample([(k,v) for k,v in self._nodes.items() if k[0] == self._id[0]],10)
                     for node_id, c in n:
                         print node_id.encode("hex"), c
                         try:
