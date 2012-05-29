@@ -544,7 +544,7 @@ class DHT(object):
                 # just acknowledge.
                 self._server.send_krpc_reply(resp,c)
         else:
-            raise RuntimeError,"Unknown request in query %r" % rec
+            logger.error("Unknown request in query %r" % rec)
 
 if __name__ == "__main__":            
 
