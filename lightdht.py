@@ -59,6 +59,10 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
+# Our version string!
+version = 'XN\x00\x00'
+
+
 #
 # Utility functions
 
@@ -222,6 +226,7 @@ class KRPCServer(object):
             req["t"] = t
         else:
             t = req["t"]
+        req["v"] = version
         data = bencode(req)
         self._transactions.add(t)
         self._sock.sendto(data, connect_info)
@@ -383,7 +388,7 @@ class DHT(object):
                 iteration += 1
                 if self.active_discovery and iteration % (self.active_discoveries + 1) != 0:
                     target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
-                    self._find_node(target)                
+                    self.find_node(target)                
                     logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
                 else:
                     # Regular maintenance:
@@ -467,7 +472,8 @@ class DHT(object):
                     # Blacklist it.
                     with self._nodes_lock:
                         self._bad.add(c)
-                        del self._nodes[id_]
+                        if id_ in self._nodes:
+                            del self._nodes[id_]
                 except KRPCError:
                     # Sometimes we just flake out due to UDP being unreliable
                     # Don't sweat it, just log and carry on.
@@ -505,7 +511,7 @@ class DHT(object):
         with self._nodes_lock:
             self._nodes[rec["a"]["id"]] = c
         # Skeleton response
-        resp = {"y":"r","t":rec["t"],"r":{"id":self._id}}
+        resp = {"y":"r","t":rec["t"],"r":{"id":self._id}, "v":version}
         if rec["q"] == "ping":
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "find_node":
