@@ -121,9 +121,8 @@ class KRPCError(RuntimeError):
 
 class KRPCServer(object):
 
-    def __init__(self, port,id_):
+    def __init__(self, port):
         self._port = port
-        self._id = id_
         self._shutdown_flag = False
         self._thread = None
         self._sock = None
@@ -267,24 +266,24 @@ class KRPCServer(object):
         return r["r"]
         
             
-    def ping(self,c):
-        q = { "y":"q", "q":"ping", "a":{"id":self._id}}        
+    def ping(self,id_,c):
+        q = { "y":"q", "q":"ping", "a":{"id":id_}}        
         return self._synctrans(q, c)        
         
-    def find_node(self, c, id_):
-        q = { "y":"q", "q":"find_node", "a":{"id":self._id,"target":id_}}
+    def find_node(self, id_,c, target):
+        q = { "y":"q", "q":"find_node", "a":{"id":id_,"target":target}}
         return self._synctrans(q, c)
         
-    def get_peers(self, connect_info, info_hash):
-        q = { "y":"q", "q":"get_peers", "a":{"id":self._id,"info_hash":info_hash}}
+    def get_peers(self, id_,connect_info, info_hash):
+        q = { "y":"q", "q":"get_peers", "a":{"id":id_,"info_hash":info_hash}}
         return self._synctrans(q, connect_info)
 
-    def announce_peer(self, connect_info, info_hash, port, token):
+    def announce_peer(self, id_,connect_info, info_hash, port, token):
         # We ignore "name" and "seed" for now as they are not part of BEP0005
         q = {'a': {
                 #'name': '', 
                 'info_hash': info_hash, 
-                'id': self._id, 
+                'id': id_, 
                 'token': token, 
                 'port': port}, 
             'q': 'announce_peer', 'y': 'q'}
@@ -297,7 +296,7 @@ class NotFoundError(RuntimeError):
 class DHT(object):
     def __init__(self, port, id_):    
         self._id = id_
-        self._server = KRPCServer(port,self._id)
+        self._server = KRPCServer(port)
         
         # This is our routing table.
         # We don't do any bucketing or anything like that, we just
@@ -339,7 +338,7 @@ class DHT(object):
 
         # Add the default nodes
         DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
-        DEFAULT_ID = self._server.ping(DEFAULT_CONNECT_INFO)['id']
+        DEFAULT_ID = self._server.ping(self._id,DEFAULT_CONNECT_INFO)['id']
         with self._nodes_lock:
             self._nodes[DEFAULT_ID] = DEFAULT_CONNECT_INFO
 
@@ -399,7 +398,7 @@ class DHT(object):
                     for node_id, c in n:
                         print node_id.encode("hex"), c
                         try:
-                            r = self._server.find_node(c, self._id)
+                            r = self._server.find_node(self._id,c, self._id)
                             if "nodes" in r:
                                 self._process_incoming_nodes(r["nodes"])
                         except KRPCTimeout:
@@ -460,7 +459,7 @@ class DHT(object):
         while attempts < max_attempts:
             for id_, c in self.get_close_nodes(target):
                 try:
-                    r = function(c,target)
+                    r = function(self._id,c,target)
                     logger.debug("Results from %r ", c)# d.encode("hex"))
                     attempts += 1                
                     if result_key and result_key in r:
