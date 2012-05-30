@@ -235,6 +235,8 @@ class KRPCServer(object):
         """
            Bencode and send a reply to a KRPC client
         """
+        logger.info("REPLY: %r %r" % (connect_info, resp))
+
         data = bencode(resp)
         self._sock.sendto(data,connect_info)
 
@@ -393,10 +395,8 @@ class DHT(object):
                     # Regular maintenance:
                     #  Find N random nodes. Execute a find_node() on them.
                     #  toss them if they come up empty.
-                    #print self._nodes.items()
                     n = random.sample([(k,v) for k,v in self._nodes.items() if k[0] == self._id[0]],10)
                     for node_id, c in n:
-                        print node_id.encode("hex"), c
                         try:
                             r = self._server.find_node(self._id,c, self._id)
                             if "nodes" in r:
@@ -454,7 +454,7 @@ class DHT(object):
             
             This is the workhorse function used by all recursive queries.
         """
-        logger.info("Recursing to target %r" % target.encode("hex"))
+        logger.debug("Recursing to target %r" % target.encode("hex"))
         attempts = 0
         while attempts < max_attempts:
             for id_, c in self.get_close_nodes(target):
@@ -490,7 +490,7 @@ class DHT(object):
             close as possible to the target node 
         """
             
-        logger.info("Tracing to %r" % target.encode("hex"))
+        logger.debug("Tracing to %r" % target.encode("hex"))
         self._recurse(target,self._server.find_node, max_attempts=attempts)        
 
     def get_peers(self,info_hash,attempts=10):
@@ -498,14 +498,14 @@ class DHT(object):
             Recursively call the get_peers function to fidn peers
             for the given info_hash
         """
-        logger.info("Finding peers for %r" % info_hash.encode("hex"))
+        logger.debug("Finding peers for %r" % info_hash.encode("hex"))
         return self._recurse(info_hash,self._server.get_peers, result_key="values",max_attempts=attempts)        
 
     def default_handler(self,rec,c):
         """
             Process incoming requests
         """
-        logger.info("Received request %r from %r" % (rec,c))
+        logger.info("REQUEST: %r %r" % (c, rec))
         # Use the request to update teh routing table
         with self._nodes_lock:
             self._nodes[rec["a"]["id"]] = c
