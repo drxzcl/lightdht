@@ -13,9 +13,9 @@ import lightdht
 
 # Enable logging:
 lightdht.logger.setLevel(logging.INFO)     
-error_handler = logging.StreamHandler(open("dht-errors.log","a"))
-error_handler.setLevel(logging.WARNING)
-lightdht.logger.addHandler(error_handler)
+req_handler = logging.StreamHandler(open("incoming-requests.log","a"))
+req_handler.setLevel(logging.INFO)
+lightdht.logger.addHandler(req_handler)
 
 stdout_handler = logging.StreamHandler()
 lightdht.logger.addHandler(stdout_handler)
