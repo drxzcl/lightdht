@@ -15,9 +15,13 @@ import lightdht
 lightdht.logger.setLevel(logging.INFO)     
 req_handler = logging.StreamHandler(open("incoming-requests.log","a"))
 req_handler.setLevel(logging.INFO)
+formatter = logging.Formatter("[%(levelname)s@%(created)s] %(message)s")
+req_handler.setFormatter(formatter)
+
 lightdht.logger.addHandler(req_handler)
 
 stdout_handler = logging.StreamHandler()
+stdout_handler.setFormatter(formatter)
 lightdht.logger.addHandler(stdout_handler)
 
 
