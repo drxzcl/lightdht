@@ -119,6 +119,13 @@ class KRPCError(RuntimeError):
     pass
 
 
+class Node(object):
+    def __init__(self,c):
+        self.c = c
+        self.treq = 0
+        self.trep = 0
+        self.t = set()
+
 class KRPCServer(object):
 
     def __init__(self, port):
@@ -127,7 +134,7 @@ class KRPCServer(object):
         self._thread = None
         self._sock = None
         self._transaction_id = 0       
-        self._transactions = set()
+        self._transactions = {}
         self._transactions_lock = threading.Lock()
         self._results = {}
         self.handler = self.default_handler
@@ -178,8 +185,15 @@ class KRPCServer(object):
                     t = rec["t"]
                     with self._transactions_lock:
                         if t in self._transactions:
-                            self._transactions.remove(t)
-                        self._results[t] = rec
+                            node = self._transactions[t][1]
+                            node.trep = time.time()
+                            if t in node.t:
+                                node.t.remove(t)
+                            if self._transactions[t][0] is not None:
+                                self._transactions[t][0](rec, node) # invoke the callback
+                            else:
+                                self._results[t] = rec # sync path
+                            del self._transactions[t]
                 elif rec["y"] == "q":
                     # It's a request, send it to the handler.
                     self.handler(rec,c)
@@ -191,7 +205,7 @@ class KRPCServer(object):
                         t = rec["t"]
                         with self._transactions_lock:
                             if t in self._transactions:
-                                self._transactions.remove(t)
+                                del self._transactions[t]
                             self._results[t] = rec
                     else:
                         # log it
@@ -199,6 +213,15 @@ class KRPCServer(object):
                                         "not specify a 't'" % (c,rec))
                 else:
                     raise RuntimeError,"Unknown KRPC message %r from %r" % (rec,c)
+
+                # Scrub the transaction list
+                t1 = time.time()                
+                for tid,(cb,node) in self._transactions.items():
+                    if t1-node.treq > 10.0:
+                        with self._transactions_lock:
+                            if tid in self._transactions:
+                                del self._transactions[tid]
+                        
                     
             except socket.timeout:
                 # no packets, that's ok
@@ -211,11 +234,11 @@ class KRPCServer(object):
                 logger.critical("Exception while handling KRPC requests:\n\n"+traceback.format_exc()+("\n\n%r from %r" % (rec,c)))
                 
 
-    def send_krpc(self, req ,connect_info):
+    def send_krpc(self, req , node,callback=None):
         """
             Perform a KRPC request
         """
-        logger.debug("KRPC request to %r", connect_info)
+        logger.debug("KRPC request to %r", node.c)
         t = -1
         if "t" not in req:
             # add transaction id
@@ -227,8 +250,11 @@ class KRPCServer(object):
             t = req["t"]
         req["v"] = version
         data = bencode(req)
-        self._transactions.add(t)
-        self._sock.sendto(data, connect_info)
+        self._transactions[t] = callback, node
+        node.treq = time.time()
+        node.t.add(t)
+        
+        self._sock.sendto(data, node.c)
         return t
         
     def send_krpc_reply(self, resp, connect_info):
@@ -240,7 +266,7 @@ class KRPCServer(object):
         data = bencode(resp)
         self._sock.sendto(data,connect_info)
 
-    def _synctrans(self, q, connect_info):
+    def _synctrans(self, q, node):
         """
             Perform a synchronous transaction.
             Used by the KRPC methods below
@@ -249,7 +275,7 @@ class KRPCServer(object):
         # the request, then waiting for the server thread
         # to post the results of our transaction into
         # the results dict.
-        t = self.send_krpc(q, connect_info)
+        t = self.send_krpc(q, node)
         dt = 0
         while t not in self._results:
             time.sleep(0.1)                
@@ -268,19 +294,19 @@ class KRPCServer(object):
         return r["r"]
         
             
-    def ping(self,id_,c):
+    def ping(self,id_,node):
         q = { "y":"q", "q":"ping", "a":{"id":id_}}        
-        return self._synctrans(q, c)        
+        return self._synctrans(q, node)        
         
-    def find_node(self, id_,c, target):
+    def find_node(self, id_,node, target):
         q = { "y":"q", "q":"find_node", "a":{"id":id_,"target":target}}
-        return self._synctrans(q, c)
+        return self._synctrans(q, node)
         
-    def get_peers(self, id_,connect_info, info_hash):
+    def get_peers(self, id_,node, info_hash):
         q = { "y":"q", "q":"get_peers", "a":{"id":id_,"info_hash":info_hash}}
-        return self._synctrans(q, connect_info)
+        return self._synctrans(q, node)
 
-    def announce_peer(self, id_,connect_info, info_hash, port, token):
+    def announce_peer(self, id_,node, info_hash, port, token):
         # We ignore "name" and "seed" for now as they are not part of BEP0005
         q = {'a': {
                 #'name': '', 
@@ -289,7 +315,7 @@ class KRPCServer(object):
                 'token': token, 
                 'port': port}, 
             'q': 'announce_peer', 'y': 'q'}
-        return self._synctrans(q, connect_info)
+        return self._synctrans(q, node)
         
 
 class NotFoundError(RuntimeError):
@@ -340,9 +366,10 @@ class DHT(object):
 
         # Add the default nodes
         DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
-        DEFAULT_ID = self._server.ping(self._id,DEFAULT_CONNECT_INFO)['id']
+        DEFAULT_NODE = Node(DEFAULT_CONNECT_INFO)
+        DEFAULT_ID = self._server.ping(self._id,DEFAULT_NODE)['id']
         with self._nodes_lock:
-            self._nodes[DEFAULT_ID] = DEFAULT_CONNECT_INFO
+            self._nodes[DEFAULT_ID] = DEFAULT_NODE
 
         # Start our event thread
         self._thread = threading.Thread(target=self._pump)
@@ -420,7 +447,7 @@ class DHT(object):
         for node_id,node_c in decode_nodes(bnodes):
             if node_c not in self._bad:
                 with self._nodes_lock:
-                    self._nodes[node_id] = node_c
+                    self._nodes[node_id] = Node(node_c)
 
 
     def get_close_nodes(self,target, N=3): 
@@ -550,9 +577,9 @@ if __name__ == "__main__":
     # Enable logging:
     # Tell the module's logger to log at level DEBUG
     logger.setLevel(logging.DEBUG)     
-    # Create a handler, tell it to log at level INFO on stdout
+    # Create a handler, tell it to log at level DEBUG on stdout
     handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
+    handler.setLevel(logging.DEBUG)
     # Add the handler
     logger.addHandler(handler)
 
