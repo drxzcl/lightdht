@@ -1,6 +1,6 @@
 """
 LightDHT - A lightweight python implementation of the Bittorrent distributed
-           hashtable.
+		   hashtable.
 
 
 The aim of LightDHT is to provide a simple, flexible implementation of the
@@ -46,7 +46,7 @@ import hashlib
 import hmac
 import random
 import struct
-import threading 
+import threading
 import traceback
 import logging
 
@@ -74,7 +74,7 @@ def dottedQuadToNum(ip):
 
 def numToDottedQuad(n):
     "convert long int to dotted quad string"
-    
+
     d = 256 * 256 * 256
     q = []
     while d > 0:
@@ -84,7 +84,7 @@ def numToDottedQuad(n):
 
     return '.'.join(q)
 
-def strxor(a, b):     
+def strxor(a, b):
     """ xor two strings of different lengths """
     if len(a) > len(b):
         return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
@@ -103,10 +103,8 @@ def encode_nodes(nodes):
     """ Encode a list of (id, connect_info) pairs into a node_info """
     n = []
     for node in nodes:
-        n.extend([node[0], dottedQuadToNum(node[1][0]),node[1][1]])
+        n.extend([node[0], dottedQuadToNum(node[1].c[0]),node[1].c[1]])
     return struct.pack("!" + "20sIH"*len(nodes),*n)
-
-
 
 class KRPCTimeout(RuntimeError):
     """
@@ -133,7 +131,7 @@ class KRPCServer(object):
         self._shutdown_flag = False
         self._thread = None
         self._sock = None
-        self._transaction_id = 0       
+        self._transaction_id = 0
         self._transactions = {}
         self._transactions_lock = threading.Lock()
         self._results = {}
@@ -145,19 +143,19 @@ class KRPCServer(object):
             Gets replaces by application specific code.
         """
         print req
-                
+
 
     def start(self):
         """
             Start the KRPC server
         """
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)        
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.settimeout(0.5)
         self._sock.bind( ("0.0.0.0",self._port) )
         self._thread = threading.Thread(target=self._pump)
         self._thread.daemon = True
         self._thread.start()
-        
+
     def shutdown(self):
         """
             Shut down the KRPC server
@@ -174,11 +172,11 @@ class KRPCServer(object):
             if self._shutdown_flag:
                 break
             rec = {}
-            try:        
+            try:
                 rec,c = self._sock.recvfrom(4096)
                 rec = bdecode(rec)
-                if rec["y"] == "r": 
-                    # It's a reply.
+                if rec["y"] == "r":
+                # It's a reply.
                     # Remove the transaction id from the list of pending
                     # transactions and add the result to the result table.
                     # The client thread will take it from there.
@@ -210,19 +208,19 @@ class KRPCServer(object):
                     else:
                         # log it
                         logger.warning("Node %r reported error %r, but did "
-                                        "not specify a 't'" % (c,rec))
+                                       "not specify a 't'" % (c,rec))
                 else:
                     raise RuntimeError,"Unknown KRPC message %r from %r" % (rec,c)
 
                 # Scrub the transaction list
-                t1 = time.time()                
+                t1 = time.time()
                 for tid,(cb,node) in self._transactions.items():
                     if t1-node.treq > 10.0:
                         with self._transactions_lock:
                             if tid in self._transactions:
                                 del self._transactions[tid]
-                        
-                    
+
+
             except socket.timeout:
                 # no packets, that's ok
                 pass
@@ -232,7 +230,7 @@ class KRPCServer(object):
             except:
                 # Log and carry on to keep the packet pump alive.
                 logger.critical("Exception while handling KRPC requests:\n\n"+traceback.format_exc()+("\n\n%r from %r" % (rec,c)))
-                
+
 
     def send_krpc(self, req , node,callback=None):
         """
@@ -253,10 +251,10 @@ class KRPCServer(object):
         self._transactions[t] = callback, node
         node.treq = time.time()
         node.t.add(t)
-        
+
         self._sock.sendto(data, node.c)
         return t
-        
+
     def send_krpc_reply(self, resp, connect_info):
         """
            Bencode and send a reply to a KRPC client
@@ -278,30 +276,30 @@ class KRPCServer(object):
         t = self.send_krpc(q, node)
         dt = 0
         while t not in self._results:
-            time.sleep(0.1)                
+            time.sleep(0.1)
             dt+=0.1
-            if dt > 5.0:                
+            if dt > 5.0:
                 raise KRPCTimeout
-                        
+
         # Retrieve the result
         r = self._results[t]
         del self._results[t]
-        
+
         if r["y"]=="e":
             # Error condition!
             raise KRPCError, "Error %r while processing transaction %r" % (r,q)
-         
+
         return r["r"]
-        
-            
+
+
     def ping(self,id_,node):
-        q = { "y":"q", "q":"ping", "a":{"id":id_}}        
-        return self._synctrans(q, node)        
-        
+        q = { "y":"q", "q":"ping", "a":{"id":id_}}
+        return self._synctrans(q, node)
+
     def find_node(self, id_,node, target):
         q = { "y":"q", "q":"find_node", "a":{"id":id_,"target":target}}
         return self._synctrans(q, node)
-        
+
     def get_peers(self, id_,node, info_hash):
         q = { "y":"q", "q":"get_peers", "a":{"id":id_,"info_hash":info_hash}}
         return self._synctrans(q, node)
@@ -309,53 +307,53 @@ class KRPCServer(object):
     def announce_peer(self, id_,node, info_hash, port, token):
         # We ignore "name" and "seed" for now as they are not part of BEP0005
         q = {'a': {
-                #'name': '', 
-                'info_hash': info_hash, 
-                'id': id_, 
-                'token': token, 
-                'port': port}, 
-            'q': 'announce_peer', 'y': 'q'}
+        #'name': '',
+        'info_hash': info_hash,
+        'id': id_,
+        'token': token,
+        'port': port},
+             'q': 'announce_peer', 'y': 'q'}
         return self._synctrans(q, node)
-        
+
 
 class NotFoundError(RuntimeError):
     pass
-        
+
 class DHT(object):
-    def __init__(self, port, id_):    
+    def __init__(self, port, id_):
         self._id = id_
         self._server = KRPCServer(port)
-        
+
         # This is our routing table.
         # We don't do any bucketing or anything like that, we just
         # keep track of all the nodes we know about.
         # This gives us significant memory overhead over a bucketed
         # implementation and ruins the logN scaling behaviour of the DHT.
         # We don't care ;)
-        
+
         self._nodes = {}
         self._nodes_lock = threading.Lock()
         self._bad = set()
 
         # Thread details
         self._shutdown_flag = False
-        self._thread = None   
-        
+        self._thread = None
+
         # default handler
         self.handler = self.default_handler
-        
+
 
         # Behaviour configuration
         #   Am I actively seeking out other nodes?
         self.active_discovery = True
         #   After how many seconds should i do another self-lookup?
-        self.self_find_delay = 180.0 
+        self.self_find_delay = 180.0
         #   How many active node discovery attempts between self-lookups?
         self.active_discoveries = 10
-        
+
         # Session key
         self._key = os.urandom(20) # 20 random bytes == 160 bits
-        
+
 
     def start(self):
         """
@@ -374,41 +372,41 @@ class DHT(object):
         # Start our event thread
         self._thread = threading.Thread(target=self._pump)
         self._thread.daemon = True
-        self._thread.start()        
-        
+        self._thread.start()
+
 
     def shutdown(self):
         self._server.shutdown()
-                
+
     def __enter__(self):
         self.start()
 
     def __exit__(self, type, value, traceback):
         self.shutdown()
-                
+
     def _pump(self):
         """
-            Thread that maintains DHT connectivity and does 
+            Thread that maintains DHT connectivity and does
             routing table housekeeping.
             Started by self.start()
-            
+
             The very first thing this function does, is look up itself
             in the DHT. This connects it to neighbouring nodes and enables
-            it to give reasonable answers to incoming queries. 
-            
+            it to give reasonable answers to incoming queries.
+
             Afterward we look up random nodes to increase our connectedness
-            and gather information about the DHT as a whole            
-            
+            and gather information about the DHT as a whole
+
         """
         # Try to establish links to close nodes
         logger.info("Establishing connections to DHT")
         self.find_node(self._id)
-               
+
         delay = self.self_find_delay
 
         if self.active_discovery:
             delay /= (self.active_discoveries + 1)
-        
+
         iteration = 0
         while True:
             try:
@@ -416,7 +414,7 @@ class DHT(object):
                 iteration += 1
                 if self.active_discovery and iteration % (self.active_discoveries + 1) != 0:
                     target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
-                    self.find_node(target)                
+                    self.find_node(target)
                     logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
                 else:
                     # Regular maintenance:
@@ -442,18 +440,17 @@ class DHT(object):
                 logger.critical("Exception in DHT maintenance thread:\n\n"+traceback.format_exc())
 
     def _process_incoming_nodes(self,bnodes):
-        
-        # Add them to the routing table        
+
+        # Add them to the routing table
         for node_id,node_c in decode_nodes(bnodes):
             if node_c not in self._bad:
                 with self._nodes_lock:
                     self._nodes[node_id] = Node(node_c)
 
-
-    def get_close_nodes(self,target, N=3): 
+    def get_close_nodes(self,target, N=3):
         """
             Find the N nodes in the routing table closest to target
-            
+
             We do this by brute force: we compute the distance of the
             target node to all the nodes in the routing table.
             A bucketing system would speed things up considerably, and
@@ -461,34 +458,34 @@ class DHT(object):
             However, we like to keep as many nodes as possible in our routing
             table for research purposes.
         """
-        
+
         # If we have no known nodes, exception!
         if len(self._nodes) == 0:
             raise RuntimeError, "No nodes in routing table!"
-        
+
         # Sort the entire routing table by distance to the target
         # and return the top N matches
         with self._nodes_lock:
-            nodes = [(node_id,self._nodes[node_id]) for node_id in self._nodes]        
+            nodes = [(node_id,self._nodes[node_id]) for node_id in self._nodes]
         nodes.sort(key=lambda x:strxor(target,x[0]))
-        return nodes[:N]          
+        return nodes[:N]
 
 
     def _recurse(self, target, function, max_attempts=10, result_key=None):
         """
             Recursively query the DHT, following "nodes" replies
             until we hit the desired key
-            
+
             This is the workhorse function used by all recursive queries.
         """
         logger.debug("Recursing to target %r" % target.encode("hex"))
         attempts = 0
         while attempts < max_attempts:
-            for id_, c in self.get_close_nodes(target):
+            for id_, node in self.get_close_nodes(target):
                 try:
-                    r = function(self._id,c,target)
-                    logger.debug("Results from %r ", c)# d.encode("hex"))
-                    attempts += 1                
+                    r = function(self._id, node, target)
+                    logger.debug("Results from %r ", node.c)# d.encode("hex"))
+                    attempts += 1
                     if result_key and result_key in r:
                         return r[result_key]
                     if "nodes" in r:
@@ -497,36 +494,36 @@ class DHT(object):
                     # The node did not reply.
                     # Blacklist it.
                     with self._nodes_lock:
-                        self._bad.add(c)
+                        self._bad.add(node)
                         if id_ in self._nodes:
                             del self._nodes[id_]
                 except KRPCError:
                     # Sometimes we just flake out due to UDP being unreliable
                     # Don't sweat it, just log and carry on.
                     logger.error("KRPC Error:\n\n"+traceback.format_exc())
-                    
-                    
+
+
         if result_key:
             # We were expecting a result, but we did not find it!
             # Raise the NotFoundError exception instead of returning None
             raise NotFoundError
 
     def find_node(self, target, attempts = 10):
-        """ 
-            Recursively call the find_node function to get as
-            close as possible to the target node 
         """
-            
+            Recursively call the find_node function to get as
+            close as possible to the target node
+        """
+
         logger.debug("Tracing to %r" % target.encode("hex"))
-        self._recurse(target,self._server.find_node, max_attempts=attempts)        
+        self._recurse(target,self._server.find_node, max_attempts=attempts)
 
     def get_peers(self,info_hash,attempts=10):
-        """ 
+        """
             Recursively call the get_peers function to fidn peers
             for the given info_hash
         """
         logger.debug("Finding peers for %r" % info_hash.encode("hex"))
-        return self._recurse(info_hash,self._server.get_peers, result_key="values",max_attempts=attempts)        
+        return self._recurse(info_hash,self._server.get_peers, result_key="values",max_attempts=attempts)
 
     def default_handler(self,rec,c):
         """
@@ -535,7 +532,7 @@ class DHT(object):
         logger.info("REQUEST: %r %r" % (c, rec))
         # Use the request to update teh routing table
         with self._nodes_lock:
-            self._nodes[rec["a"]["id"]] = c
+            self._nodes[rec["a"]["id"]] = Node(c)
         # Skeleton response
         resp = {"y":"r","t":rec["t"],"r":{"id":self._id}, "v":version}
         if rec["q"] == "ping":
@@ -546,7 +543,7 @@ class DHT(object):
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "get_peers":
             # Provide a token so we can receive announces
-            # The token is generated using HMAC and a secret 
+            # The token is generated using HMAC and a secret
             # session key, so we don't have to remember it.
             # Token is based on nodes id, connection details
             # torrent infohash to avoid clashes in NAT scenarios.
@@ -572,11 +569,11 @@ class DHT(object):
         else:
             logger.error("Unknown request in query %r" % rec)
 
-if __name__ == "__main__":            
+if __name__ == "__main__":
 
     # Enable logging:
     # Tell the module's logger to log at level DEBUG
-    logger.setLevel(logging.DEBUG)     
+    logger.setLevel(logging.DEBUG)
     # Create a handler, tell it to log at level DEBUG on stdout
     handler = logging.StreamHandler()
     handler.setLevel(logging.DEBUG)
@@ -585,13 +582,12 @@ if __name__ == "__main__":
 
     # Create a DHT node.
     dht1 = DHT(port=54767, id_=hashlib.sha1(
-            "Change this to avoid getting ID clashes").digest()) 
+        "Change this to avoid getting ID clashes").digest())
     # Start it!
     with dht1:
         # Look up peers that are sharing one of the Ubuntu 12.04 ISO torrents
-        print dht1.get_peers("8ac3731ad4b039c05393b5404afa6e7397810b41".decode("hex"))   
+        print dht1.get_peers("8ac3731ad4b039c05393b5404afa6e7397810b41".decode("hex"))
         # Go to sleep and let the DHT service requests.
         while True:
             time.sleep(1)
-
 
