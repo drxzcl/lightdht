@@ -1,6 +1,6 @@
 """
 LightDHT - A lightweight python implementation of the Bittorrent distributed
-		   hashtable.
+           hashtable.
 
 
 The aim of LightDHT is to provide a simple, flexible implementation of the
@@ -11,7 +11,7 @@ DHT.
 
 
 Philosophy:
- 
+
  - Ease of use over performance
  - Adaptability over scalability
 
@@ -24,7 +24,7 @@ logical program flow intact, and makes it more comfortable to use.
 In order to maintain O(log N) scaling across the network, BEP0005 (the
 standard governing the DHT) mandates that implementations use a bucket-based
 approach to the routing table. This enables the node to fulfill all requests
-in constant time and (more or less) constant memory. In LightDHT, we throw 
+in constant time and (more or less) constant memory. In LightDHT, we throw
 that recommendation to the wind.
 
 Since the main focus of LightDHT is research, we are going to keep around all
@@ -32,7 +32,7 @@ the data we can. This means that we keep around every single node we know
 about. Since in practice the number of nodes is limited and the request
 rates are rather low, we do not bother keeping the routing table organized
 in a tree structure for quick lookups. Instead we keep it in a dictionary
-and sort on-demand. The performance penalty is well worth the reduced 
+and sort on-demand. The performance penalty is well worth the reduced
 complexity of the implementation, and the flexibility of having all nodes in
 an easy to use data structure.
 
@@ -306,11 +306,11 @@ class KRPCServer(object):
     def announce_peer(self, id_,node, info_hash, port, token):
         # We ignore "name" and "seed" for now as they are not part of BEP0005
         q = {'a': {
-        #'name': '',
-        'info_hash': info_hash,
-        'id': id_,
-        'token': token,
-        'port': port},
+            #'name': '',
+            'info_hash': info_hash,
+            'id': id_,
+            'token': token,
+            'port': port},
              'q': 'announce_peer', 'y': 'q'}
         return self._synctrans(q, node)
 
@@ -532,7 +532,7 @@ class DHT(object):
         # Use the request to update teh routing table
         with self._nodes_lock:
             self._nodes[rec["a"]["id"]] = Node(c)
-        # Skeleton response
+            # Skeleton response
         resp = {"y":"r","t":rec["t"],"r":{"id":self._id}, "v":version}
         if rec["q"] == "ping":
             self._server.send_krpc_reply(resp,c)
