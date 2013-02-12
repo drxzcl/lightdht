@@ -27,7 +27,7 @@ approach to the routing table. This enables the node to fulfill all requests
 in constant time and (more or less) constant memory. In LightDHT, we throw 
 that recommendation to the wind.
 
-Since the main focus of LightDHT is reseach, we are going to keep around all
+Since the main focus of LightDHT is research, we are going to keep around all
 the data we can. This means that we keep around every single node we know
 about. Since in practice the number of nodes is limited and the request
 rates are rather low, we do not bother keeping the routing table organized
@@ -39,7 +39,6 @@ an easy to use data structure.
 """
 
 import socket
-import sys
 import os
 import time
 import hashlib
@@ -67,20 +66,20 @@ version = 'XN\x00\x00'
 # Utility functions
 
 def dottedQuadToNum(ip):
-    "convert decimal dotted quad string to long integer"
+    """convert decimal dotted quad string to long integer"""
 
     hexn = ''.join(["%02X" % long(i) for i in ip.split('.')])
     return long(hexn, 16)
 
 def numToDottedQuad(n):
-    "convert long int to dotted quad string"
+    """convert long int to dotted quad string"""
 
     d = 256 * 256 * 256
     q = []
     while d > 0:
         m,n = divmod(n,d)
         q.append(str(m))
-        d = d/256
+        d /= 256
 
     return '.'.join(q)
 
@@ -551,7 +550,7 @@ class DHT(object):
             peer_id = rec["a"]["id"]
             token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
             resp["r"]["token"] = token
-            # We dont actually keep any peer administration, so we
+            # We don't actually keep any peer administration, so we
             # always send back the closest nodes
             resp["r"]["nodes"] = encode_nodes(self.get_close_nodes(info_hash))
             self._server.send_krpc_reply(resp,c)
@@ -563,7 +562,7 @@ class DHT(object):
             if token != rec["a"]["token"]:
                 return # Ignore the request
             else:
-                # We dont actually keep any peer administration, so we
+                # We don't actually keep any peer administration, so we
                 # just acknowledge.
                 self._server.send_krpc_reply(resp,c)
         else:
