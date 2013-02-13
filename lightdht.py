@@ -329,10 +329,12 @@ class RoutingTable(object):
     def __init__(self):
         self._nodes = {}
         self._nodes_lock = threading.Lock()
+        self._bad = set()
 
     def update_entry(self,node_id,node):
-        with self._nodes_lock:
-            self._nodes[node_id] = node
+        if node not in self._bad:
+            with self._nodes_lock:
+                self._nodes[node_id] = node
 
     def get_close_nodes(self,target, N=3):
         """
@@ -362,6 +364,10 @@ class RoutingTable(object):
             if node_id in self._nodes:
                 del self._nodes[node_id]
 
+    def bad_node(self, node_id, node):
+        self.remove_node(node_id)
+        self._bad.add(node)
+
     def node_count(self):
         return len(self._nodes)
 
@@ -376,8 +382,6 @@ class DHT(object):
         self._server = KRPCServer(port)
 
         self._rt = RoutingTable()
-
-        self._bad = set()
 
         # Thread details
         self._shutdown_flag = False
@@ -472,8 +476,7 @@ class DHT(object):
                         except KRPCTimeout:
                             # The node did not reply.
                             # Blacklist it.
-                            self._bad.add(c)
-                            self._rt.remove_node(node_id)
+                            self._rt.bad_node(node_id,c)
                     logger.info("Cleanup, routing table contains %d nodes", self._rt.node_count())
             except:
                 # This loop should run forever. If we get into trouble, log
@@ -484,8 +487,7 @@ class DHT(object):
 
         # Add them to the routing table
         for node_id,node_c in decode_nodes(bnodes):
-            if node_c not in self._bad:
-                self._rt.update_entry(node_id,Node(node_c))
+            self._rt.update_entry(node_id,Node(node_c))
 
 
 
@@ -511,8 +513,7 @@ class DHT(object):
                 except KRPCTimeout:
                     # The node did not reply.
                     # Blacklist it.
-                    self._bad.add(node)
-                    self._rt.remove_node(id_)
+                    self._rt.bad_node(id_,node)
                 except KRPCError:
                     # Sometimes we just flake out due to UDP being unreliable
                     # Don't sweat it, just log and carry on.
