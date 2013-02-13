@@ -318,20 +318,65 @@ class KRPCServer(object):
 class NotFoundError(RuntimeError):
     pass
 
+
+# This is our routing table.
+# We don't do any bucketing or anything like that, we just
+# keep track of all the nodes we know about.
+# This gives us significant memory overhead over a bucketed
+# implementation and ruins the logN scaling behaviour of the DHT.
+# We don't care ;)
+class RoutingTable(object):
+    def __init__(self):
+        self._nodes = {}
+        self._nodes_lock = threading.Lock()
+
+    def update_entry(self,node_id,node):
+        with self._nodes_lock:
+            self._nodes[node_id] = node
+
+    def get_close_nodes(self,target, N=3):
+        """
+            Find the N nodes in the routing table closest to target
+
+            We do this by brute force: we compute the distance of the
+            target node to all the nodes in the routing table.
+            A bucketing system would speed things up considerably, and
+            require less memory.
+            However, we like to keep as many nodes as possible in our routing
+            table for research purposes.
+        """
+
+        # If we have no known nodes, exception!
+        if len(self._nodes) == 0:
+            raise RuntimeError, "No nodes in routing table!"
+
+        # Sort the entire routing table by distance to the target
+        # and return the top N matches
+        with self._nodes_lock:
+            nodes = [(node_id,self._nodes[node_id]) for node_id in self._nodes]
+        nodes.sort(key=lambda x:strxor(target,x[0]))
+        return nodes[:N]
+
+    def remove_node(self, node_id):
+        with self._nodes_lock:
+            if node_id in self._nodes:
+                del self._nodes[node_id]
+
+    def node_count(self):
+        return len(self._nodes)
+
+    def sample(self,id_,N,prefix_bytes=1):
+        with self._nodes_lock:
+            return random.sample([(k,v) for k,v in self._nodes.items() if k[:prefix_bytes] == id_[:prefix_bytes]],N)
+
+
 class DHT(object):
     def __init__(self, port, id_):
         self._id = id_
         self._server = KRPCServer(port)
 
-        # This is our routing table.
-        # We don't do any bucketing or anything like that, we just
-        # keep track of all the nodes we know about.
-        # This gives us significant memory overhead over a bucketed
-        # implementation and ruins the logN scaling behaviour of the DHT.
-        # We don't care ;)
+        self._rt = RoutingTable()
 
-        self._nodes = {}
-        self._nodes_lock = threading.Lock()
         self._bad = set()
 
         # Thread details
@@ -365,8 +410,7 @@ class DHT(object):
         DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
         DEFAULT_NODE = Node(DEFAULT_CONNECT_INFO)
         DEFAULT_ID = self._server.ping(self._id,DEFAULT_NODE)['id']
-        with self._nodes_lock:
-            self._nodes[DEFAULT_ID] = DEFAULT_NODE
+        self._rt.update_entry(DEFAULT_ID,DEFAULT_NODE)
 
         # Start our event thread
         self._thread = threading.Thread(target=self._pump)
@@ -414,12 +458,12 @@ class DHT(object):
                 if self.active_discovery and iteration % (self.active_discoveries + 1) != 0:
                     target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
                     self.find_node(target)
-                    logger.info("Tracing done, routing table contains %d nodes", len(self._nodes))
+                    logger.info("Tracing done, routing table contains %d nodes", self._rt.node_count())
                 else:
                     # Regular maintenance:
                     #  Find N random nodes. Execute a find_node() on them.
                     #  toss them if they come up empty.
-                    n = random.sample([(k,v) for k,v in self._nodes.items() if k[0] == self._id[0]],10)
+                    n = self._rt.sample(self._id,10,1)
                     for node_id, c in n:
                         try:
                             r = self._server.find_node(self._id,c, self._id)
@@ -428,11 +472,9 @@ class DHT(object):
                         except KRPCTimeout:
                             # The node did not reply.
                             # Blacklist it.
-                            with self._nodes_lock:
-                                self._bad.add(c)
-                                if node_id in self._nodes:
-                                    del self._nodes[node_id]
-                    logger.info("Cleanup, routing table contains %d nodes", len(self._nodes))
+                            self._bad.add(c)
+                            self._rt.remove_node(node_id)
+                    logger.info("Cleanup, routing table contains %d nodes", self._rt.node_count())
             except:
                 # This loop should run forever. If we get into trouble, log
                 # the exception and carry on.
@@ -443,31 +485,8 @@ class DHT(object):
         # Add them to the routing table
         for node_id,node_c in decode_nodes(bnodes):
             if node_c not in self._bad:
-                with self._nodes_lock:
-                    self._nodes[node_id] = Node(node_c)
+                self._rt.update_entry(node_id,Node(node_c))
 
-    def get_close_nodes(self,target, N=3):
-        """
-            Find the N nodes in the routing table closest to target
-
-            We do this by brute force: we compute the distance of the
-            target node to all the nodes in the routing table.
-            A bucketing system would speed things up considerably, and
-            require less memory.
-            However, we like to keep as many nodes as possible in our routing
-            table for research purposes.
-        """
-
-        # If we have no known nodes, exception!
-        if len(self._nodes) == 0:
-            raise RuntimeError, "No nodes in routing table!"
-
-        # Sort the entire routing table by distance to the target
-        # and return the top N matches
-        with self._nodes_lock:
-            nodes = [(node_id,self._nodes[node_id]) for node_id in self._nodes]
-        nodes.sort(key=lambda x:strxor(target,x[0]))
-        return nodes[:N]
 
 
     def _recurse(self, target, function, max_attempts=10, result_key=None):
@@ -480,7 +499,7 @@ class DHT(object):
         logger.debug("Recursing to target %r" % target.encode("hex"))
         attempts = 0
         while attempts < max_attempts:
-            for id_, node in self.get_close_nodes(target):
+            for id_, node in self._rt.get_close_nodes(target):
                 try:
                     r = function(self._id, node, target)
                     logger.debug("Results from %r ", node.c)# d.encode("hex"))
@@ -492,10 +511,8 @@ class DHT(object):
                 except KRPCTimeout:
                     # The node did not reply.
                     # Blacklist it.
-                    with self._nodes_lock:
-                        self._bad.add(node)
-                        if id_ in self._nodes:
-                            del self._nodes[id_]
+                    self._bad.add(node)
+                    self._rt.remove_node(id_)
                 except KRPCError:
                     # Sometimes we just flake out due to UDP being unreliable
                     # Don't sweat it, just log and carry on.
@@ -529,16 +546,15 @@ class DHT(object):
             Process incoming requests
         """
         logger.info("REQUEST: %r %r" % (c, rec))
-        # Use the request to update teh routing table
-        with self._nodes_lock:
-            self._nodes[rec["a"]["id"]] = Node(c)
-            # Skeleton response
+        # Use the request to update the routing table
+        self._rt.update_entry(rec["a"]["id"],Node(c))
+        # Skeleton response
         resp = {"y":"r","t":rec["t"],"r":{"id":self._id}, "v":version}
         if rec["q"] == "ping":
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "find_node":
             target = rec["a"]["target"]
-            resp["r"]["nodes"] = encode_nodes(self.get_close_nodes(target))
+            resp["r"]["nodes"] = encode_nodes(self._rt.get_close_nodes(target))
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "get_peers":
             # Provide a token so we can receive announces
@@ -552,7 +568,7 @@ class DHT(object):
             resp["r"]["token"] = token
             # We don't actually keep any peer administration, so we
             # always send back the closest nodes
-            resp["r"]["nodes"] = encode_nodes(self.get_close_nodes(info_hash))
+            resp["r"]["nodes"] = encode_nodes(self._rt.get_close_nodes(info_hash))
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "announce_peer":
             # First things first, validate the token.
