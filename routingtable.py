@@ -1,0 +1,85 @@
+import threading
+import random
+
+def strxor(a, b):
+    """ xor two strings of different lengths """
+    if len(a) > len(b):
+        return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
+    else:
+        return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
+
+class RoutingTable(object):
+    def update_entry(self,node_id,node):
+        raise NotImplemented
+
+    def get_close_nodes(self,target, N=3):
+        raise NotImplemented
+
+    def remove_node(self, node_id):
+        raise NotImplemented
+
+    def bad_node(self, node_id, node):
+        raise NotImplemented
+
+    def node_count(self):
+        raise NotImplemented
+
+    def sample(self,id_,N,prefix_bytes=1):
+        raise NotImplemented
+
+
+# This is our routing table.
+# We don't do any bucketing or anything like that, we just
+# keep track of all the nodes we know about.
+# This gives us significant memory overhead over a bucketed
+# implementation and ruins the logN scaling behaviour of the DHT.
+# We don't care ;)
+class FlatRoutingTable(RoutingTable):
+    def __init__(self):
+        self._nodes = {}
+        self._nodes_lock = threading.Lock()
+        self._bad = set()
+
+    def update_entry(self,node_id,node):
+        if node not in self._bad:
+            with self._nodes_lock:
+                self._nodes[node_id] = node
+
+    def get_close_nodes(self,target, N=3):
+        """
+            Find the N nodes in the routing table closest to target
+
+            We do this by brute force: we compute the distance of the
+            target node to all the nodes in the routing table.
+            A bucketing system would speed things up considerably, and
+            require less memory.
+            However, we like to keep as many nodes as possible in our routing
+            table for research purposes.
+        """
+
+        # If we have no known nodes, exception!
+        if len(self._nodes) == 0:
+            raise RuntimeError, "No nodes in routing table!"
+
+        # Sort the entire routing table by distance to the target
+        # and return the top N matches
+        with self._nodes_lock:
+            nodes = [(node_id,self._nodes[node_id]) for node_id in self._nodes]
+        nodes.sort(key=lambda x:strxor(target,x[0]))
+        return nodes[:N]
+
+    def remove_node(self, node_id):
+        with self._nodes_lock:
+            if node_id in self._nodes:
+                del self._nodes[node_id]
+
+    def bad_node(self, node_id, node):
+        self.remove_node(node_id)
+        self._bad.add(node)
+
+    def node_count(self):
+        return len(self._nodes)
+
+    def sample(self,id_,N,prefix_bytes=1):
+        with self._nodes_lock:
+            return random.sample([(k,v) for k,v in self._nodes.items() if k[:prefix_bytes] == id_[:prefix_bytes]],N)
