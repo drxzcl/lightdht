@@ -49,7 +49,7 @@ import traceback
 import logging
 
 from krpcserver import KRPCServer, KRPCTimeout, KRPCError, version
-from routingtable import FlatRoutingTable
+from routingtable import FlatRoutingTable, PrefixRoutingTable
 
 # Logging is disabled by default.
 # See http://docs.python.org/library/logging.html
@@ -110,7 +110,7 @@ class DHT(object):
         self._id = id_
         self._server = KRPCServer(port)
 
-        self._rt = FlatRoutingTable()
+        self._rt = PrefixRoutingTable()
 
         # Thread details
         self._shutdown_flag = False
