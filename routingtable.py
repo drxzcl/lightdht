@@ -102,9 +102,10 @@ class PrefixRoutingTable(RoutingTable):
                 self._nodes[node_id[:self._prefix_bytes]][node_id] = node
 
     def get_close_nodes(self, target, N=3):
-        p = min(self._nodes.keys(), key=lambda x: abs(ord(x) ^ ord(target[0])))
-        ids = sorted(self._nodes[p], key=lambda x: strxor(x, target))[:8]
-        return [(id, self._nodes[p][id]) for id in ids]
+        with self._nodes_lock:
+            p = min(self._nodes.keys(), key=lambda x: abs(ord(x) ^ ord(target[0])))
+            ids = sorted(self._nodes[p], key=lambda x: strxor(x, target))[:8]
+            return [(id, self._nodes[p][id]) for id in ids]
 
     def remove_node(self, node_id):
         with self._nodes_lock:
