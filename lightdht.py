@@ -131,6 +131,9 @@ class DHT(object):
         # Session key
         self._key = os.urandom(20) # 20 random bytes == 160 bits
 
+    def _get_id(self,target):
+        # Retrieve ID to use to communicate with target node
+        return self._id
 
     def start(self):
         """
@@ -142,7 +145,7 @@ class DHT(object):
         # Add the default nodes
         DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
         DEFAULT_NODE = Node(DEFAULT_CONNECT_INFO)
-        DEFAULT_ID = self._server.ping(self._id,DEFAULT_NODE)['id']
+        DEFAULT_ID = self._server.ping(os.urandom(20),DEFAULT_NODE)['id']
         self._rt.update_entry(DEFAULT_ID,DEFAULT_NODE)
 
         # Start our event thread
@@ -232,7 +235,7 @@ class DHT(object):
         while attempts < max_attempts:
             for id_, node in self._rt.get_close_nodes(target):
                 try:
-                    r = function(self._id, node, target)
+                    r = function(self._get_id(id_), node, target)
                     logger.debug("Results from %r ", node.c)# d.encode("hex"))
                     attempts += 1
                     if result_key and result_key in r:
@@ -277,13 +280,15 @@ class DHT(object):
         """
         logger.info("REQUEST: %r %r" % (c, rec))
         # Use the request to update the routing table
-        self._rt.update_entry(rec["a"]["id"],Node(c))
+        peer_id = rec["a"]["id"]
+        self._rt.update_entry(peer_id,Node(c))
         # Skeleton response
-        resp = {"y":"r","t":rec["t"],"r":{"id":self._id}, "v":version}
+        resp = {"y":"r","t":rec["t"],"r":{"id":self._get_id(peer_id)}, "v":version}
         if rec["q"] == "ping":
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "find_node":
             target = rec["a"]["target"]
+            resp["r"]["id"] = self._get_id(target)
             resp["r"]["nodes"] = encode_nodes(self._rt.get_close_nodes(target))
             self._server.send_krpc_reply(resp,c)
         elif rec["q"] == "get_peers":
@@ -293,7 +298,7 @@ class DHT(object):
             # Token is based on nodes id, connection details
             # torrent infohash to avoid clashes in NAT scenarios.
             info_hash = rec["a"]["info_hash"]
-            peer_id = rec["a"]["id"]
+            resp["r"]["id"] = self._get_id(info_hash)
             token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
             resp["r"]["token"] = token
             # We don't actually keep any peer administration, so we
@@ -303,6 +308,7 @@ class DHT(object):
         elif rec["q"] == "announce_peer":
             # First things first, validate the token.
             info_hash = rec["a"]["info_hash"]
+            resp["r"]["id"] = self._get_id(info_hash)
             peer_id = rec["a"]["id"]
             token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
             if token != rec["a"]["token"]:
