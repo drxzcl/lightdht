@@ -4,7 +4,6 @@
     We run a dht node and log all incoming queries.
 """
 import logging
-import hashlib
 import time
 import os
 
@@ -26,7 +25,7 @@ lightdht.logger.addHandler(stdout_handler)
 
 
 # Create a DHT node.
-id_ = os.urandom(20) #hashlib.sha1("Change this to avoid getting ID clashes").digest()
+id_ = os.urandom(20)
 dht = lightdht.DHT(port=54767, id_=id_) 
 
 # where to put our product
