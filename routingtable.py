@@ -1,6 +1,7 @@
 import collections
 import threading
 import random
+import time
 
 
 def strxor(a, b):
@@ -115,7 +116,10 @@ class PrefixRoutingTable(RoutingTable):
         self._bad.add(node)
 
     def node_count(self):
-        return sum(map(len, self._nodes))
+        t = 0
+        for p in self._nodes:
+            t+=len(self._nodes[p])
+        return t
 
     def sample(self, id_, N, prefix_bytes=1):
         # Only support matching prefixes for now
@@ -123,3 +127,42 @@ class PrefixRoutingTable(RoutingTable):
             raise ValueError("Expected prefix_bytes:%d, got %d" % (self._prefix_bytes, prefix_bytes))
         with self._nodes_lock:
             return random.sample(self._nodes[id_[:prefix_bytes]].items(), N)
+
+    def _random_node(self,prefix, outstanding=False):
+        """
+            Get a random node from this prefix bucket.
+            if it's empty, grab any old node
+        """
+
+        N = 3 # choice between N eligible closest nodes
+        nlist = []
+        for p in sorted(self._nodes.keys(), key = lambda x: abs(ord(x) ^ ord(prefix))):
+            if len(nlist) >= N:
+                break
+            for k,v in self._nodes[p].items():
+                if (v.treq > v.trep) and not outstanding: # outstanding requests
+                    continue
+                nlist.append((k,v))
+                if len(nlist) >= N:
+                    break
+
+        if not nlist:
+            # try again with pending nodes too
+            return self._random_node(prefix, True)
+
+        return random.choice(nlist)
+
+    def cleanup (self, timeout):
+        abandoned_transactions = []
+        for prefix in self._nodes.keys():
+            for k,v in self._nodes[prefix].items():
+                # outstanding request and request older than timeout
+                if (v.treq - v.trep) > 0 and (time.time() - v.treq) > timeout:
+                    # Node is bad
+                    with self._nodes_lock:
+                        if k in self._nodes[prefix]:
+                            for tid in self._nodes[prefix][k].t:
+                                abandoned_transactions.append(tid)
+                            del self._nodes[prefix][k]
+                        self._bad.add(v.c)
+        return abandoned_transactions
