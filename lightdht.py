@@ -9,33 +9,7 @@ you have come to the wrong place. LightDHT does not implement the actual
 file transfer parts of the bittorrent protocol. It only takes part in the
 DHT.
 
-
-Philosophy:
-
- - Ease of use over performance
- - Adaptability over scalability
-
-In order to keep LightDHT easy to use, all DHT RPC calls are performed
-synchronously. This means that when you call a DHT method, your program will
-block until you have an answer to your request. That answer will be the
-return value of the function. This has the advantage that it keeps the
-logical program flow intact, and makes it more comfortable to use.
-
-In order to maintain O(log N) scaling across the network, BEP0005 (the
-standard governing the DHT) mandates that implementations use a bucket-based
-approach to the routing table. This enables the node to fulfill all requests
-in constant time and (more or less) constant memory. In LightDHT, we throw
-that recommendation to the wind.
-
-Since the main focus of LightDHT is research, we are going to keep around all
-the data we can. This means that we keep around every single node we know
-about. Since in practice the number of nodes is limited and the request
-rates are rather low, we do not bother keeping the routing table organized
-in a tree structure for quick lookups. Instead we keep it in a dictionary
-and sort on-demand. The performance penalty is well worth the reduced
-complexity of the implementation, and the flexibility of having all nodes in
-an easy to use data structure.
-
+Read README.md for more information.
 """
 
 import socket
@@ -49,12 +23,10 @@ import traceback
 import logging
 
 from krpcserver import KRPCServer, KRPCTimeout, KRPCError, version
-from routingtable import FlatRoutingTable, PrefixRoutingTable
+from routingtable import PrefixRoutingTable
 
-# Logging is disabled by default.
 # See http://docs.python.org/library/logging.html
 logger = logging.getLogger(__name__)
-#logger.addHandler(logging.NullHandler())
 
 #
 # Utility functions
@@ -65,36 +37,39 @@ def dottedQuadToNum(ip):
     hexn = ''.join(["%02X" % long(i) for i in ip.split('.')])
     return long(hexn, 16)
 
+
 def numToDottedQuad(n):
     """convert long int to dotted quad string"""
 
     d = 256 * 256 * 256
     q = []
     while d > 0:
-        m,n = divmod(n,d)
+        m, n = divmod(n, d)
         q.append(str(m))
         d /= 256
 
     return '.'.join(q)
 
+
 def decode_nodes(nodes):
     """ Decode node_info into a list of id, connect_info """
-    nrnodes = len(nodes)/26
-    nodes = struct.unpack("!" + "20sIH"*nrnodes,nodes)
+    nrnodes = len(nodes) / 26
+    nodes = struct.unpack("!" + "20sIH" * nrnodes, nodes)
     for i in xrange(nrnodes):
-        id_, ip, port = nodes[i*3], numToDottedQuad(nodes[i*3+1]), nodes[i*3+2]
-        yield id_,(ip, port)
+        id_, ip, port = nodes[i * 3], numToDottedQuad(nodes[i * 3 + 1]), nodes[i * 3 + 2]
+        yield id_, (ip, port)
+
 
 def encode_nodes(nodes):
     """ Encode a list of (id, connect_info) pairs into a node_info """
     n = []
     for node in nodes:
-        n.extend([node[0], dottedQuadToNum(node[1].c[0]),node[1].c[1]])
-    return struct.pack("!" + "20sIH"*len(nodes),*n)
+        n.extend([node[0], dottedQuadToNum(node[1].c[0]), node[1].c[1]])
+    return struct.pack("!" + "20sIH" * len(nodes), *n)
 
 
 class Node(object):
-    def __init__(self,c):
+    def __init__(self, c):
         self.c = c
         self.treq = 0
         self.trep = 0
@@ -131,7 +106,7 @@ class DHT(object):
         # Session key
         self._key = os.urandom(20) # 20 random bytes == 160 bits
 
-    def _get_id(self,target):
+    def _get_id(self, target):
         # Retrieve ID to use to communicate with target node
         return self._id
 
@@ -145,14 +120,13 @@ class DHT(object):
         # Add the default nodes
         DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
         DEFAULT_NODE = Node(DEFAULT_CONNECT_INFO)
-        DEFAULT_ID = self._server.ping(os.urandom(20),DEFAULT_NODE)['id']
-        self._rt.update_entry(DEFAULT_ID,DEFAULT_NODE)
+        DEFAULT_ID = self._server.ping(os.urandom(20), DEFAULT_NODE)['id']
+        self._rt.update_entry(DEFAULT_ID, DEFAULT_NODE)
 
         # Start our event thread
         self._thread = threading.Thread(target=self._pump)
         self._thread.daemon = True
         self._thread.start()
-
 
     def shutdown(self):
         self._server.shutdown()
@@ -192,36 +166,34 @@ class DHT(object):
                 time.sleep(delay)
                 iteration += 1
                 if self.active_discovery and iteration % (self.active_discoveries + 1) != 0:
-                    target = hashlib.sha1("this is my salt 2348724" + str(iteration)+self._id).digest()
+                    target = hashlib.sha1("this is my salt 2348724" + str(iteration) + self._id).digest()
                     self.find_node(target)
                     logger.info("Tracing done, routing table contains %d nodes", self._rt.node_count())
                 else:
                     # Regular maintenance:
                     #  Find N random nodes. Execute a find_node() on them.
                     #  toss them if they come up empty.
-                    n = self._rt.sample(self._id,10,1)
+                    n = self._rt.sample(self._id, 10, 1)
                     for node_id, c in n:
                         try:
-                            r = self._server.find_node(self._id,c, self._id)
+                            r = self._server.find_node(self._id, c, self._id)
                             if "nodes" in r:
                                 self._process_incoming_nodes(r["nodes"])
                         except KRPCTimeout:
                             # The node did not reply.
                             # Blacklist it.
-                            self._rt.bad_node(node_id,c)
+                            self._rt.bad_node(node_id, c)
                     logger.info("Cleanup, routing table contains %d nodes", self._rt.node_count())
             except:
                 # This loop should run forever. If we get into trouble, log
                 # the exception and carry on.
-                logger.critical("Exception in DHT maintenance thread:\n\n"+traceback.format_exc())
+                logger.critical("Exception in DHT maintenance thread:\n\n" + traceback.format_exc())
 
-    def _process_incoming_nodes(self,bnodes):
+    def _process_incoming_nodes(self, bnodes):
 
         # Add them to the routing table
-        for node_id,node_c in decode_nodes(bnodes):
-            self._rt.update_entry(node_id,Node(node_c))
-
-
+        for node_id, node_c in decode_nodes(bnodes):
+            self._rt.update_entry(node_id, Node(node_c))
 
     def _recurse(self, target, function, max_attempts=10, result_key=None):
         """
@@ -245,52 +217,51 @@ class DHT(object):
                 except KRPCTimeout:
                     # The node did not reply.
                     # Blacklist it.
-                    self._rt.bad_node(id_,node)
+                    self._rt.bad_node(id_, node)
                 except KRPCError:
                     # Sometimes we just flake out due to UDP being unreliable
                     # Don't sweat it, just log and carry on.
-                    logger.error("KRPC Error:\n\n"+traceback.format_exc())
-
+                    logger.error("KRPC Error:\n\n" + traceback.format_exc())
 
         if result_key:
             # We were expecting a result, but we did not find it!
             # Raise the NotFoundError exception instead of returning None
             raise NotFoundError
 
-    def find_node(self, target, attempts = 10):
+    def find_node(self, target, attempts=10):
         """
             Recursively call the find_node function to get as
             close as possible to the target node
         """
 
         logger.debug("Tracing to %r" % target.encode("hex"))
-        self._recurse(target,self._server.find_node, max_attempts=attempts)
+        self._recurse(target, self._server.find_node, max_attempts=attempts)
 
-    def get_peers(self,info_hash,attempts=10):
+    def get_peers(self, info_hash, attempts=10):
         """
             Recursively call the get_peers function to fidn peers
             for the given info_hash
         """
         logger.debug("Finding peers for %r" % info_hash.encode("hex"))
-        return self._recurse(info_hash,self._server.get_peers, result_key="values",max_attempts=attempts)
+        return self._recurse(info_hash, self._server.get_peers, result_key="values", max_attempts=attempts)
 
-    def default_handler(self,rec,c):
+    def default_handler(self, rec, c):
         """
             Process incoming requests
         """
         logger.info("REQUEST: %r %r" % (c, rec))
         # Use the request to update the routing table
         peer_id = rec["a"]["id"]
-        self._rt.update_entry(peer_id,Node(c))
+        self._rt.update_entry(peer_id, Node(c))
         # Skeleton response
-        resp = {"y":"r","t":rec["t"],"r":{"id":self._get_id(peer_id)}, "v":version}
+        resp = {"y": "r", "t": rec["t"], "r": {"id": self._get_id(peer_id)}, "v": version}
         if rec["q"] == "ping":
-            self._server.send_krpc_reply(resp,c)
+            self._server.send_krpc_reply(resp, c)
         elif rec["q"] == "find_node":
             target = rec["a"]["target"]
             resp["r"]["id"] = self._get_id(target)
             resp["r"]["nodes"] = encode_nodes(self._rt.get_close_nodes(target))
-            self._server.send_krpc_reply(resp,c)
+            self._server.send_krpc_reply(resp, c)
         elif rec["q"] == "get_peers":
             # Provide a token so we can receive announces
             # The token is generated using HMAC and a secret
@@ -299,26 +270,27 @@ class DHT(object):
             # torrent infohash to avoid clashes in NAT scenarios.
             info_hash = rec["a"]["info_hash"]
             resp["r"]["id"] = self._get_id(info_hash)
-            token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
+            token = hmac.new(self._key, info_hash + peer_id + str(c), hashlib.sha1).digest()
             resp["r"]["token"] = token
             # We don't actually keep any peer administration, so we
             # always send back the closest nodes
             resp["r"]["nodes"] = encode_nodes(self._rt.get_close_nodes(info_hash))
-            self._server.send_krpc_reply(resp,c)
+            self._server.send_krpc_reply(resp, c)
         elif rec["q"] == "announce_peer":
             # First things first, validate the token.
             info_hash = rec["a"]["info_hash"]
             resp["r"]["id"] = self._get_id(info_hash)
             peer_id = rec["a"]["id"]
-            token = hmac.new(self._key,info_hash+peer_id+str(c),hashlib.sha1).digest()
+            token = hmac.new(self._key, info_hash + peer_id + str(c), hashlib.sha1).digest()
             if token != rec["a"]["token"]:
                 return # Ignore the request
             else:
                 # We don't actually keep any peer administration, so we
                 # just acknowledge.
-                self._server.send_krpc_reply(resp,c)
+                self._server.send_krpc_reply(resp, c)
         else:
             logger.error("Unknown request in query %r" % rec)
+
 
 if __name__ == "__main__":
 
