@@ -11,18 +11,19 @@ import lightdht
 
 
 # Enable logging:
-lightdht.logger.setLevel(logging.INFO)     
+loglevel = logging.DEBUG
 req_handler = logging.StreamHandler(open("incoming-requests.log","a"))
-req_handler.setLevel(logging.INFO)
+req_handler.setLevel(loglevel)
 formatter = logging.Formatter("[%(levelname)s@%(created)s] %(message)s")
 req_handler.setFormatter(formatter)
-
-lightdht.logger.addHandler(req_handler)
-
 stdout_handler = logging.StreamHandler()
 stdout_handler.setFormatter(formatter)
-lightdht.logger.addHandler(stdout_handler)
-
+logging.getLogger("krpcserver").setLevel(loglevel)
+logging.getLogger("krpcserver").addHandler(req_handler)
+logging.getLogger("krpcserver").addHandler(stdout_handler)
+logging.getLogger("lightdht").setLevel(loglevel)
+logging.getLogger("lightdht").addHandler(req_handler)
+logging.getLogger("lightdht").addHandler(stdout_handler)
 
 # Create a DHT node.
 id_ = os.urandom(20)
