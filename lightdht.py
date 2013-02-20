@@ -208,7 +208,7 @@ class DHT(object):
             for id_, node in self._rt.get_close_nodes(target):
                 try:
                     r = function(self._get_id(id_), node, target)
-                    logger.debug("Results from %r ", node.c)# d.encode("hex"))
+                    logger.debug("Recursion results from %r ", node.c)# d.encode("hex"))
                     attempts += 1
                     if result_key and result_key in r:
                         return r[result_key]
