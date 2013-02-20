@@ -76,9 +76,10 @@ class KRPCServer(object):
             rec = {}
             try:
                 rec,c = self._sock.recvfrom(4096)
+                logger.debug("Received data from %r", c)
                 rec = bdecode(rec)
                 if rec["y"] == "r":
-                # It's a reply.
+                    # It's a reply.
                     # Remove the transaction id from the list of pending
                     # transactions and add the result to the result table.
                     # The client thread will take it from there.
