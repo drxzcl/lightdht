@@ -28,9 +28,9 @@ from routingtable import PrefixRoutingTable
 # See http://docs.python.org/library/logging.html
 logger = logging.getLogger(__name__)
 
+
 #
 # Utility functions
-
 def dottedQuadToNum(ip):
     """convert decimal dotted quad string to long integer"""
 
@@ -94,7 +94,6 @@ class DHT(object):
         # default handler
         self.handler = self.default_handler
 
-
         # Behaviour configuration
         #   Am I actively seeking out other nodes?
         self.active_discovery = True
@@ -134,7 +133,7 @@ class DHT(object):
     def __enter__(self):
         self.start()
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type_, value, traceback):
         self.shutdown()
 
     def _pump(self):
@@ -208,7 +207,7 @@ class DHT(object):
             for id_, node in self._rt.get_close_nodes(target):
                 try:
                     r = function(self._get_id(id_), node, target)
-                    logger.debug("Recursion results from %r ", node.c)# d.encode("hex"))
+                    logger.debug("Recursion results from %r ", node.c)
                     attempts += 1
                     if result_key and result_key in r:
                         return r[result_key]
@@ -283,7 +282,7 @@ class DHT(object):
             peer_id = rec["a"]["id"]
             token = hmac.new(self._key, info_hash + peer_id + str(c), hashlib.sha1).digest()
             if token != rec["a"]["token"]:
-                return # Ignore the request
+                return  # Ignore the request
             else:
                 # We don't actually keep any peer administration, so we
                 # just acknowledge.
