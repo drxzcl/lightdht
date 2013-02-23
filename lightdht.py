@@ -22,7 +22,7 @@ import threading
 import traceback
 import logging
 
-from krpcserver import KRPCServer, KRPCTimeout, KRPCError, version
+from krpcserver import KRPCServer, KRPCTimeout, KRPCError
 from routingtable import PrefixRoutingTable
 
 # See http://docs.python.org/library/logging.html
@@ -81,9 +81,10 @@ class NotFoundError(RuntimeError):
 
 
 class DHT(object):
-    def __init__(self, port, id_):
+    def __init__(self, port, id_, version):
         self._id = id_
-        self._server = KRPCServer(port)
+        self._version = version
+        self._server = KRPCServer(port, self._version)
 
         self._rt = PrefixRoutingTable()
 
@@ -253,7 +254,7 @@ class DHT(object):
         peer_id = rec["a"]["id"]
         self._rt.update_entry(peer_id, Node(c))
         # Skeleton response
-        resp = {"y": "r", "t": rec["t"], "r": {"id": self._get_id(peer_id)}, "v": version}
+        resp = {"y": "r", "t": rec["t"], "r": {"id": self._get_id(peer_id)}, "v": self._version}
         if rec["q"] == "ping":
             self._server.send_krpc_reply(resp, c)
         elif rec["q"] == "find_node":
@@ -302,7 +303,7 @@ if __name__ == "__main__":
 
     # Create a DHT node.
     dht1 = DHT(port=54767, id_=hashlib.sha1(
-        "Change this to avoid getting ID clashes").digest())
+        "Change this to avoid getting ID clashes").digest(), version="XN\x00\x00")
     # Start it!
     with dht1:
         # Look up peers that are sharing one of the Ubuntu 12.04 ISO torrents

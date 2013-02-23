@@ -8,9 +8,6 @@ import traceback
 from bencode import bencode, bdecode
 from BTL import BTFailure
 
-# Our version string!
-version = 'XN\x00\x00'
-
 # Logging is disabled by default.
 # See http://docs.python.org/library/logging.html
 logger = logging.getLogger(__name__)
@@ -28,8 +25,9 @@ class KRPCError(RuntimeError):
 
 class KRPCServer(object):
 
-    def __init__(self, port):
+    def __init__(self, port, version):
         self._port = port
+        self._version = version
         self._shutdown_flag = False
         self._thread = None
         self._sock = None
@@ -149,7 +147,7 @@ class KRPCServer(object):
             req["t"] = t
         else:
             t = req["t"]
-        req["v"] = version
+        req["v"] = self._version
         data = bencode(req)
         self._transactions[t] = callback, node
         node.treq = time.time()
