@@ -27,7 +27,7 @@ logging.getLogger("lightdht").addHandler(stdout_handler)
 
 # Create a DHT node.
 id_ = os.urandom(20)
-dht = lightdht.DHT(port=54767, id_=id_) 
+dht = lightdht.DHT(port=54768, id_=id_, version="XN\x00\x00") 
 
 # where to put our product
 outf = open("get-peers.%s.log" % id_.encode("hex"),"a")
