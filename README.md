@@ -27,3 +27,5 @@ that recommendation to the wind.
 Since the main focus of LightDHT is reseach, we are going to keep around all
 the data we can. This means that we keep around every single node we know
 about. You can choose between using a simple flat routing table, where all the node information is stored in a single dictionary, or a slightly more complex multi-level prefix-based routing table, where nodes are grouped together based on their node IDs.
+
+[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/66b2052410e17ef51bdab10b5440c540 "githalytics.com")](http://githalytics.com/drxzcl/lightdht)
