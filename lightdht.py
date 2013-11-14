@@ -118,7 +118,7 @@ class DHT(object):
         self._server.handler = self.handler
 
         # Add the default nodes
-        DEFAULT_CONNECT_INFO = (socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
+        DEFAULT_CONNECT_INFO = ('67.215.242.139', 6881) #(socket.gethostbyaddr("router.bittorrent.com")[2][0], 6881)
         DEFAULT_NODE = Node(DEFAULT_CONNECT_INFO)
         DEFAULT_ID = self._server.ping(os.urandom(20), DEFAULT_NODE)['id']
         self._rt.update_entry(DEFAULT_ID, DEFAULT_NODE)
@@ -252,6 +252,10 @@ class DHT(object):
         logger.info("REQUEST: %r %r" % (c, rec))
         # Use the request to update the routing table
         peer_id = rec["a"]["id"]
+        #print peer_id.encode('base64'), self._get_id(peer_id).encode('base64')
+        if self._get_id(peer_id) == peer_id:
+            # don't talk to yourself.
+            return
         self._rt.update_entry(peer_id, Node(c))
         # Skeleton response
         resp = {"y": "r", "t": rec["t"], "r": {"id": self._get_id(peer_id)}, "v": self._version}
