@@ -7,9 +7,10 @@ import time
 def strxor(a, b):
     """ xor two strings of different lengths """
     if len(a) > len(b):
-        return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
+        return bytes([(x ^ y) for (x, y) in zip(a[:len(b)], b)])
     else:
-        return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
+        return bytes([(x ^ y) for (x, y) in zip(a[:len(b)], b)])
+        #return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
 
 
 class RoutingTable(object):
@@ -63,7 +64,7 @@ class FlatRoutingTable(RoutingTable):
 
         # If we have no known nodes, exception!
         if len(self._nodes) == 0:
-            raise RuntimeError, "No nodes in routing table!"
+            raise RuntimeError("No nodes in routing table!")
 
         # Sort the entire routing table by distance to the target
         # and return the top N matches
@@ -86,7 +87,7 @@ class FlatRoutingTable(RoutingTable):
 
     def sample(self, id_, N, prefix_bytes=1):
         with self._nodes_lock:
-            return random.sample([(k, v) for k, v in self._nodes.items() if k[:prefix_bytes] == id_[:prefix_bytes]], N)
+            return random.sample([(k, v) for k, v in list(self._nodes.items()) if k[:prefix_bytes] == id_[:prefix_bytes]], N)
 
 
 class PrefixRoutingTable(RoutingTable):
@@ -103,7 +104,7 @@ class PrefixRoutingTable(RoutingTable):
 
     def get_close_nodes(self, target, N=3):
         with self._nodes_lock:
-            p = min(self._nodes.keys(), key=lambda x: abs(ord(x) ^ ord(target[0])))
+            p = min(list(self._nodes.keys()), key=lambda x: abs(x[0] ^ target[0]))
             ids = sorted(self._nodes[p], key=lambda x: strxor(x, target))[:8]
             return [(id, self._nodes[p][id]) for id in ids]
 
@@ -127,7 +128,7 @@ class PrefixRoutingTable(RoutingTable):
         if prefix_bytes != self._prefix_bytes:
             raise ValueError("Expected prefix_bytes:%d, got %d" % (self._prefix_bytes, prefix_bytes))
         with self._nodes_lock:
-            return random.sample(self._nodes[id_[:prefix_bytes]].items(), N)
+            return random.sample(list(self._nodes[id_[:prefix_bytes]].items()), N)
 
     def _random_node(self,prefix, outstanding=False):
         """
@@ -137,10 +138,10 @@ class PrefixRoutingTable(RoutingTable):
 
         N = 3 # choice between N eligible closest nodes
         nlist = []
-        for p in sorted(self._nodes.keys(), key = lambda x: abs(ord(x) ^ ord(prefix))):
+        for p in sorted(list(self._nodes.keys()), key = lambda x: abs(ord(x) ^ ord(prefix))):
             if len(nlist) >= N:
                 break
-            for k,v in self._nodes[p].items():
+            for k,v in list(self._nodes[p].items()):
                 if (v.treq > v.trep) and not outstanding: # outstanding requests
                     continue
                 nlist.append((k,v))
@@ -155,8 +156,8 @@ class PrefixRoutingTable(RoutingTable):
 
     def cleanup (self, timeout):
         abandoned_transactions = []
-        for prefix in self._nodes.keys():
-            for k,v in self._nodes[prefix].items():
+        for prefix in list(self._nodes.keys()):
+            for k,v in list(self._nodes[prefix].items()):
                 # outstanding request and request older than timeout
                 if (v.treq - v.trep) > 0 and (time.time() - v.treq) > timeout:
                     # Node is bad

@@ -5,8 +5,8 @@ import struct
 import logging
 import traceback
 
-from bencode import bencode, bdecode
-from BTL import BTFailure
+
+import bencodepy
 
 # Logging is disabled by default.
 # See http://docs.python.org/library/logging.html
@@ -42,7 +42,7 @@ class KRPCServer(object):
             Default incoming KRPC request handler.
             Gets replaces by application specific code.
         """
-        print req
+        print(req)
 
 
     def start(self):
@@ -75,13 +75,14 @@ class KRPCServer(object):
             try:
                 rec,c = self._sock.recvfrom(4096)
                 logger.debug("Received data from %r", c)
-                rec = bdecode(rec)
-                if rec["y"] == "r":
+                rec = bencodepy.decode(rec)
+                print(rec)
+                if rec[b"y"] == b"r":
                     # It's a reply.
                     # Remove the transaction id from the list of pending
                     # transactions and add the result to the result table.
                     # The client thread will take it from there.
-                    t = rec["t"]
+                    t = rec[b"t"]
                     with self._transactions_lock:
                         if t in self._transactions:
                             node = self._transactions[t][1]
@@ -93,15 +94,15 @@ class KRPCServer(object):
                             else:
                                 self._results[t] = rec # sync path
                             del self._transactions[t]
-                elif rec["y"] == "q":
+                elif rec[b"y"] == b"q":
                     # It's a request, send it to the handler.
                     self.handler(rec,c)
-                elif rec["y"] == "e":
+                elif rec[b"y"] == b"e":
                     # just post the error to the results array,  but only if
                     # we have a transaction ID!
                     # Some software (e.g. LibTorrent) does not post the "t"
-                    if "t" in rec:
-                        t = rec["t"]
+                    if b"t" in rec:
+                        t = rec[b"t"]
                         with self._transactions_lock:
                             if t in self._transactions:
                                 del self._transactions[t]
@@ -111,11 +112,11 @@ class KRPCServer(object):
                         logger.warning("Node %r reported error %r, but did "
                                        "not specify a 't'" % (c,rec))
                 else:
-                    raise RuntimeError,"Unknown KRPC message %r from %r" % (rec,c)
+                    raise RuntimeError("Unknown KRPC message %r from %r" % (rec,c))
 
                 # Scrub the transaction list
                 t1 = time.time()
-                for tid,(cb,node) in self._transactions.items():
+                for tid,(cb,node) in list(self._transactions.items()):
                     if t1-node.treq > 10.0:
                         with self._transactions_lock:
                             if tid in self._transactions:
@@ -125,7 +126,7 @@ class KRPCServer(object):
             except socket.timeout:
                 # no packets, that's ok
                 pass
-            except BTFailure:
+            except bencodepy.DecodingError:
                 # bdecode error, ignore the packet
                 pass
             except:
@@ -139,16 +140,17 @@ class KRPCServer(object):
         """
         logger.debug("KRPC request to %r", node.c)
         t = -1
-        if "t" not in req:
+        if b"t" not in req:
             # add transaction id
             with self._transactions_lock:
                 self._transaction_id += 1
                 t = struct.pack("i",self._transaction_id)
-            req["t"] = t
+            req[b"t"] = t
         else:
-            t = req["t"]
-        req["v"] = self._version
-        data = bencode(req)
+            t = req[b"t"]
+        req[b"v"] = self._version
+        print(req)
+        data = bencodepy.encode(req)
         self._transactions[t] = callback, node
         node.treq = time.time()
         node.t.add(t)
@@ -162,7 +164,7 @@ class KRPCServer(object):
         """
         logger.info("REPLY: %r %r" % (connect_info, resp))
 
-        data = bencode(resp)
+        data = bencodepy.encode(resp)
         self._sock.sendto(data,connect_info)
 
     def _synctrans(self, q, node):
@@ -186,32 +188,32 @@ class KRPCServer(object):
         r = self._results[t]
         del self._results[t]
 
-        if r["y"]=="e":
+        if r[b"y"]==b"e":
             # Error condition!
-            raise KRPCError, "Error %r while processing transaction %r" % (r,q)
+            raise KRPCError("Error %r while processing transaction %r" % (r,q))
 
-        return r["r"]
+        return r[b"r"]
 
 
     def ping(self,id_,node):
-        q = { "y":"q", "q":"ping", "a":{"id":id_}}
+        q = { b"y":b"q", b"q":b"ping", b"a":{b"id":id_}}
         return self._synctrans(q, node)
 
     def find_node(self, id_,node, target):
-        q = { "y":"q", "q":"find_node", "a":{"id":id_,"target":target}}
+        q = { b"y":b"q", b"q":b"find_node", b"a":{b"id":id_,b"target":target}}
         return self._synctrans(q, node)
 
     def get_peers(self, id_,node, info_hash):
-        q = { "y":"q", "q":"get_peers", "a":{"id":id_,"info_hash":info_hash}}
+        q = { b"y":b"q", b"q":b"get_peers", b"a":{b"id":id_,b"info_hash":info_hash}}
         return self._synctrans(q, node)
 
     def announce_peer(self, id_,node, info_hash, port, token):
         # We ignore "name" and "seed" for now as they are not part of BEP0005
-        q = {'a': {
+        q = {b'a': {
             #'name': '',
-            'info_hash': info_hash,
-            'id': id_,
-            'token': token,
-            'port': port},
-             'q': 'announce_peer', 'y': 'q'}
+            b'info_hash': info_hash,
+            b'id': id_,
+            b'token': token,
+            b'port': port},
+             b'q': b'announce_peer', b'y': b'q'}
         return self._synctrans(q, node)

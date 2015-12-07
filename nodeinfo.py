@@ -7,7 +7,7 @@ import logging
 import time
 import os
 
-import lightdht
+from . import lightdht
 
 
 # Enable logging:
@@ -37,12 +37,12 @@ def myhandler(rec, c):
     try:    
         if rec["y"] =="q":
             if rec["q"] == "get_peers":
-                print >>outf,";".join(
+                print(";".join(
                     [   str(time.time()),
                         rec["a"].get("id").encode("hex"),
                         rec["a"].get("info_hash").encode("hex"),
                         repr(c),
-                    ])
+                    ]), file=outf)
                 outf.flush()
                         
     finally:
